@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import BotCommand, BotCommandScopeDefault, ReplyKeyboardRemove
 
-# --- [ СИСТЕМНЫЙ БЛОК ] ---
+# --- [ ПОЛНАЯ КОНФИГУРАЦИЯ СИСТЕМЫ ] ---
 TOKEN = "8629311774:AAFg-a3tCTFfgVTU4a9HNIX8l3xQHMejLs4"
 OWNER_ID = 8330448891 
 
@@ -14,26 +14,35 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- [ ГЛОБАЛЬНАЯ ДАТА-БАЗА ] ---
+# --- [ ГЛОБАЛЬНАЯ БАЗА ДАННЫХ В ПАМЯТИ ] ---
 users = {}
 banned_users = set()
-muted_users = {} # {id: time}
-votes = {} # {user_id: candidate_id}
+muted_users = {} # {id: datetime}
+votes = {} # {candidate_id: [voter_ids]}
 
-# Динамические курсы
-rates = {"btc": 500000, "eth": 35000, "apple": 1500, "google": 2800}
-
-global_state = {
+# Экономические показатели
+market = {
+    "btc": 4500000, 
+    "eth": 280000, 
+    "apple": 15000, 
+    "tesla": 85000,
     "tax": 5,
-    "president": None,
-    "election_open": True,
-    "jackpot": 10000000
+    "president": None
 }
 
-# Списки товаров
-CARS = {"Lada": 150000, "BMW": 1200000, "Tesla": 5000000, "Bugatti": 20000000}
-HOUSES = {"Трейлер": 50000, "Квартира": 800000, "Вилла": 15000000, "Замок": 100000000}
-BUSINESS = {"Киоск": 300000, "СТО": 2000000, "Завод": 50000000}
+# Списки имущества
+CARS = {
+    "Lada Granta": 150000, "Solaris": 800000, "BMW M5": 4500000, 
+    "Mercedes G63": 12000000, "Ferrari Purosangue": 45000000, "Bugatti Chiron": 120000000
+}
+HOUSES = {
+    "Бытовка": 45000, "Квартира в хрущевке": 450000, "Пентхаус": 15000000, 
+    "Вилла в Дубае": 85000000, "Личный замок": 350000000, "Небоскреб": 1200000000
+}
+BIZ = {
+    "Шаурмичная": 250000, "Магазин 24/7": 1200000, "Автосалон": 15000000, 
+    "Нефтяная вышка": 500000000, "Банк": 2000000000
+}
 
 # --- [ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ] ---
 
@@ -41,38 +50,29 @@ def get_u(m: types.Message):
     uid = m.from_user.id
     if uid not in users:
         users[uid] = {
-            "name": m.from_user.full_name, "user": m.from_user.username or "None",
-            "balance": 25000, "bank": 0, "btc": 0, "eth": 0,
-            "stocks": {"apple": 0, "google": 0},
+            "name": m.from_user.full_name,
+            "username": m.from_user.username or "None",
+            "balance": 30000, "bank": 0, "btc": 0, "eth": 0,
+            "stocks": {"apple": 0, "tesla": 0},
             "lvl": 1, "exp": 0, "energy": 100, "hp": 100,
-            "status": "Гражданин", "cars": [], "houses": [], "biz": [],
+            "status": "Игрок", "cars": [], "houses": [], "biz": [],
             "last_work": datetime.min, "is_admin": False
         }
     if uid == OWNER_ID: users[uid]["is_admin"] = True
     return users[uid]
 
-async def check_admin(m: types.Message):
-    if m.from_user.id == OWNER_ID: return True
-    await m.answer("⚠️ Ошибка доступа: Вы не являетесь Основателем!")
+async def is_owner(m: types.Message):
+    if m.from_user.id == OWNER_ID:
+        return True
+    await m.answer("⚠️ **ОТКАЗАНО:** У вас нет прав Основателя для этой команды!")
     return False
 
-# --- [ ОБРАБОТКА МУТА И БАНА ] ---
-@dp.message()
-async def middleware(message: types.Message, next_handler):
-    uid = message.from_user.id
-    if uid in banned_users: return 
-    if uid in muted_users:
-        if datetime.now() < muted_users[uid]:
-            return await message.answer("🤐 Вы не можете писать, у вас мут!")
-        else: del muted_users[uid]
-    return await next_handler(message)
-
-# --- [ КОМАНДЫ СТАРТА И МЕНЮ ] ---
+# --- [ СИСТЕМА КОМАНД И МЕНЮ ] ---
 
 async def set_main_menu(bot: Bot):
-    cmds = [
-        BotCommand(command="start", description="🖥 Меню"),
-        BotCommand(command="profile", description="👤 Профиль"),
+    main_commands = [
+        BotCommand(command="start", description="🖥 Главное меню"),
+        BotCommand(command="profile", description="👤 Мой профиль"),
         BotCommand(command="work", description="⚒ Работа"),
         BotCommand(command="shop", description="🛒 Магазин"),
         BotCommand(command="market", description="📈 Биржа"),
@@ -81,244 +81,261 @@ async def set_main_menu(bot: Bot):
         BotCommand(command="vote", description="🗳 Выборы"),
         BotCommand(command="ahelp", description="🛡 Админ-панель")
     ]
-    await bot.set_my_commands(cmds, scope=BotCommandScopeDefault())
+    await bot.set_my_commands(main_commands, scope=BotCommandScopeDefault())
 
-@dp.message(Command("start"))
-async def cmd_start(m: types.Message):
-    get_u(m)
-    await m.answer(
-        "🏙 **GLOBAL SIMULATOR: MONSTER EDITION**\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        "Ты в игре! Здесь можно стать Президентом, крипто-магнатом или владельцем заводов.\n\n"
-        "🔹 `.профиль` | `.инвентарь` | `.топ`\n"
-        "🔹 `.работа` | `.банк` | `.снять`\n"
-        "🔹 `.крипта` | `.акции` | `.биржа`\n"
-        "🔹 `.казино` | `.слоты` | `.кубик`\n"
-        "🔹 `.выборы` | `.голосовать` [ID]\n\n"
-        "⚙️ **Управление:** Используй кнопки меню или префикс `.`",
-        parse_mode="Markdown"
-    )
+# --- [ ОБРАБОТКА МУТА И БАНА (MIDDLEWARE) ] ---
 
-# --- [ ПРОФИЛЬ И ИНВЕНТАРЬ ] ---
-
-@dp.message(F.text.lower().startswith((".профиль", "/profile")))
-async def profile_view(m: types.Message):
-    u = get_u(m)
-    txt = (
-        f"👤 **ДОКУМЕНТЫ: {u['name']}**\n"
-        f"🏅 Уровень: `{u['lvl']}` ({u['exp']}/{(u['lvl']*1000)})\n"
-        f"🎭 Статус: **{u['status']}**\n"
-        f"🍎 Энергия: `{u['energy']}%` | ❤️ ХП: `{u['hp']}%`\n"
-        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"💰 Наличка: `{u['balance']:,}` 💰\n"
-        f"🏦 В банке: `{u['bank']:,}` 💰\n"
-        f"₿ BTC: `{u['btc']:.4f}` | Ξ ETH: `{u['eth']:.2f}`\n"
-        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"🚗 Авто: {len(u['cars'])} | 🏠 Дома: {len(u['houses'])} | 🏢 Бизнес: {len(u['biz'])}"
-    )
-    await m.answer(txt, parse_mode="Markdown")
-
-@dp.message(F.text.lower() == ".инвентарь")
-async def inv_view(m: types.Message):
-    u = get_u(m)
-    res = "📦 **ТВОИ ВЕЩИ:**\n\n"
-    res += "**Машины:** " + (", ".join(u['cars']) if u['cars'] else "Нет") + "\n"
-    res += "**Дома:** " + (", ".join(u['houses']) if u['houses'] else "Нет") + "\n"
-    res += "**Акции:** Apple: " + str(u['stocks']['apple']) + ", Google: " + str(u['stocks']['google'])
-    await m.answer(res)
-
-# --- [ ЭКОНОМИКА: РАБОТА, БАНК, КРИПТА ] ---
-
-@dp.message(F.text.lower() == ".работа")
-async def job_logic(m: types.Message):
-    u = get_u(m)
-    if datetime.now() - u["last_work"] < timedelta(minutes=3):
-        return await m.answer("⏳ Ты устал. Подожди 3 минуты!")
-    
-    pay = random.randint(5000, 15000)
-    tax_v = int(pay * (global_state['tax'] / 100))
-    u["balance"] += (pay - tax_v)
-    u["last_work"] = datetime.now()
-    u["exp"] += 150
-    if u["exp"] >= u["lvl"] * 1000: u["lvl"] += 1; u["exp"] = 0
-    await m.answer(f"⚒ Ты отработал смену!\n💰 Начислено: `{pay:,}`\n💸 Налог ({global_state['tax']}%): `{tax_v:,}`\n✅ Итого: **{pay-tax_v:,} 💰**")
-
-@dp.message(F.text.lower().startswith(".банк"))
-async def bank_put(m: types.Message):
-    u = get_u(m)
-    try:
-        val = int(m.text.split()[1])
-        if u["balance"] >= val > 0:
-            u["balance"] -= val; u["bank"] += val
-            await m.answer(f"🏦 Внесено на депозит: `{val:,}`")
-        else: await m.answer("❌ Недостаточно средств!")
-    except: await m.answer("❓ Юзай: `.банк 1000`")
-
-@dp.message(F.text.lower().startswith(".снять"))
-async def bank_out(m: types.Message):
-    u = get_u(m)
-    try:
-        val = int(m.text.split()[1])
-        if u["bank"] >= val > 0:
-            u["bank"] -= val; u["balance"] += val
-            await m.answer(f"🏦 Снято со счета: `{val:,}`")
-        else: await m.answer("❌ В банке нет такой суммы!")
-    except: await m.answer("❓ Юзай: `.снять 1000`")
-
-@dp.message(F.text.lower() == ".биржа")
-async def stock_market(m: types.Message):
-    # Рандомное изменение курса при каждом просмотре
-    for key in rates: rates[key] += random.randint(-500, 500)
-    txt = (
-        "📈 **БИРЖА КРИПТОВАЛЮТ И АКЦИЙ**\n\n"
-        f"₿ Bitcoin: `{rates['btc']:,}` 💰\n"
-        f"Ξ Ethereum: `{rates['eth']:,}` 💰\n"
-        f"🍎 Apple: `{rates['apple']:,}` 💰\n"
-        f"🔍 Google: `{rates['google']:,}` 💰\n\n"
-        "🔹 Купить: `.купить бтс 1` или `.купить акцию apple 5`"
-    )
-    await m.answer(txt, parse_mode="Markdown")
-
-# --- [ КАЗИНО И ИГРЫ ] ---
-
-@dp.message(F.text.lower().startswith(".казино"))
-async def casino_logic(m: types.Message):
-    u = get_u(m)
-    try:
-        bet = int(m.text.split()[1])
-        if u["balance"] < bet or bet < 100: return await m.answer("❌ Ставка неверна!")
-        if random.random() < 0.44:
-            u["balance"] += bet
-            await m.answer(f"🎰 **ПОБЕДА!** Твой выигрыш: `{bet*2:,}` 💰")
-        else:
-            u["balance"] -= bet
-            await m.answer(f"🌚 **ПРОИГРЫШ.** Потеряно: `{bet:,}` 💰")
-    except: await m.answer("❓ Пример: `.казино 1000`")
-
-# --- [ ПОЛИТИКА И ВЫБОРЫ ] ---
-
-@dp.message(F.text.lower() == ".выборы")
-async def election_info(m: types.Message):
-    txt = "🗳 **ВЫБОРЫ ПРЕЗИДЕНТА**\n\n"
-    if not votes: txt += "Пока голосов нет. Стань первым!\n"
-    else:
-        for cid, count in votes.items():
-            txt += f"ID {cid}: {count} голосов\n"
-    txt += "\n👉 Чтобы проголосовать: `.голосовать [ID_игрока]`"
-    await m.answer(txt)
-
-@dp.message(F.text.lower().startswith(".голосовать"))
-async def vote_logic(m: types.Message):
+@dp.message()
+async def global_handler(m: types.Message):
     uid = m.from_user.id
-    try:
-        target_id = int(m.text.split()[1])
-        votes[target_id] = votes.get(target_id, 0) + 1
-        await m.answer(f"✅ Вы проголосовали за игрока {target_id}!")
-    except: pass
+    # Проверка бана
+    if uid in banned_users:
+        return
+    # Проверка мута
+    if uid in muted_users:
+        if datetime.now() < muted_users[uid]:
+            return # Просто игнорим
+        else:
+            del muted_users[uid]
 
-# --- [ АДМИН-ПАНЕЛЬ И СЕКРЕТНЫЕ КОМАНДЫ ] ---
-
-@dp.message(Command("ahelp"))
-async def adm_help(m: types.Message):
-    if not await check_admin(m): return
-    txt = (
-        "👑 **SECRET OWNER PANEL**\n"
-        "• `.выдать [сумма]` — Дать денег (в ответ)\n"
-        "• `.уб [сумма]` — Сетнуть баланс (в ответ)\n"
-        "• `.статус [текст]` — Дать статус (в ответ)\n"
-        "• `.бан` — Бан (в ответ)\n"
-        "• `.мут [мин]` — Мут (в ответ)\n"
-        "• `/setlvl [lvl]` — Поставить уровень (себе или в ответ)"
-    )
-    await m.answer(txt)
-
-@dp.message(Command("setlvl"))
-async def secret_lvl(m: types.Message):
-    if not await check_admin(m): return
-    try:
-        new_lvl = int(m.text.split()[1])
-        target = get_u(m.reply_to_message) if m.reply_to_message else get_u(m)
-        target["lvl"] = new_lvl
-        await m.answer(f"🔮 Уровень {target['name']} изменен на {new_lvl}")
-    except: pass
-
-@dp.message(F.text.lower().startswith(".уб"))
-async def adm_set_bal(m: types.Message):
-    if not await check_admin(m): return
-    if not m.reply_to_message: return await m.answer("❌ Ответь на сообщение!")
-    val = int(m.text.split()[-1])
-    target = get_u(m.reply_to_message)
-    target["balance"] = val
-    await m.answer(f"✅ Баланс {target['name']} изменен на `{val:,}`")
-
-@dp.message(F.text.lower().startswith(".бан"))
-async def adm_ban(m: types.Message):
-    if not await check_admin(m): return
-    if not m.reply_to_message: return
-    tid = m.reply_to_message.from_user.id
-    banned_users.add(tid)
-    await m.answer("🚫 Игрок забанен навсегда.")
-
-@dp.message(F.text.lower().startswith(".мут"))
-async def adm_mute(m: types.Message):
-    if not await check_admin(m): return
-    if not m.reply_to_message: return
-    mins = int(m.text.split()[-1])
-    tid = m.reply_to_message.from_user.id
-    muted_users[tid] = datetime.now() + timedelta(minutes=mins)
-    await m.answer(f"🤐 Игрок замучен на {mins} мин.")
-
-@dp.message(F.text.lower() == ".админы")
-async def show_admins_list(m: types.Message):
-    adms = [f"• {u['name']} (@{u['user']})" for i, u in users.items() if u['is_admin']]
-    await m.answer("🛡 **ДЕЙСТВУЮЩАЯ АДМИНИСТРАЦИЯ:**\n" + "\n".join(adms))
-
-@dp.message(F.text.lower() == ".топ")
-async def show_forbes_top(m: types.Message):
-    top = sorted(users.items(), key=lambda x: x[1]['balance'] + x[1]['bank'], reverse=True)[:10]
-    res = "🏆 **FORBES GLOBAL TOP:**\n\n"
-    for i, (uid, d) in enumerate(top, 1):
-        res += f"{i}. {d['name']} — `{d['balance']+d['bank']:,}` 💰\n"
-    await m.answer(res)
-
-# --- [ МАГАЗИН И ПОКУПКИ ] ---
-@dp.message(F.text.lower() == ".магазин")
-async def shop_full(m: types.Message):
-    txt = "🛒 **ЦЕНТРАЛЬНЫЙ УНИВЕРМАГ**\n\n**🚗 МАШИНЫ:**\n"
-    for k, v in CARS.items(): txt += f"• {k}: `{v:,}`\n"
-    txt += "\n**🏠 ДОМА:**\n"
-    for k, v in HOUSES.items(): txt += f"• {k}: `{v:,}`\n"
-    txt += "\n**🏢 БИЗНЕС:**\n"
-    for k, v in BUSINESS.items(): txt += f"• {k}: `{v:,}`\n"
-    txt += "\n👉 Купить: `.купить [название]`"
-    await m.answer(txt)
-
-@dp.message(F.text.lower().startswith(".купить"))
-async def buy_engine(m: types.Message):
+    # Обработка команд вручную для поддержки точки
+    text = m.text.lower() if m.text else ""
     u = get_u(m)
-    item = m.text.replace(".купить", "").strip()
-    # Логика покупки тачек
-    if item in CARS:
-        if u["balance"] >= CARS[item]:
-            u["balance"] -= CARS[item]; u["cars"].append(item)
-            await m.answer(f"✅ Куплено: {item}")
-        else: await m.answer("❌ Денег нет!")
-    # Логика крипты
-    elif "бтс" in item.lower():
-        try:
-            amt = int(item.split()[-1])
-            cost = rates["btc"] * amt
-            if u["balance"] >= cost:
-                u["balance"] -= cost; u["btc"] += amt
-                await m.answer(f"₿ Куплено {amt} BTC!")
-            else: await m.answer("❌ Не хватает на крипту!")
-        except: pass
-    else: await m.answer("❌ Товар не найден.")
 
-# --- [ ЗАПУСК ] ---
-async def main():
+    # --- [ БЛОК: СТАРТ И ИНФО ] ---
+    if text in ["/start", ".старт"]:
+        return await m.answer(
+            "🏙 **GLOBAL SIMULATOR: OVERDRIVE 2.0**\n"
+            "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+            "Добро пожаловать в самый мощный симулятор в Telegram!\n\n"
+            "🎮 **ИГРОВЫЕ КОМАНДЫ:**\n"
+            "• `.профиль` | `.инвентарь` | `.топ`\n"
+            "• `.работа` | `.банк` | `.снять`\n"
+            "• `.биржа` | `.крипта` | `.акции`\n"
+            "• `.магазин` | `.бизнес` | `.купить [имя]`\n"
+            "• `.казино [ставка]` | `.кубик` | `.слоты`\n\n"
+            "🗳 **ПОЛИТИКА:** `.выборы`, `.голосовать [id]`\n"
+            "🛡 **АДМИНКА:** `.ахелп` (Только для Основателя)",
+            parse_mode="Markdown"
+        )
+
+    # --- [ БЛОК: ПРОФИЛЬ ] ---
+    if text.startswith((".профиль", "/profile")):
+        txt = (
+            f"👤 **ПАСПОРТ: {u['name']}**\n"
+            f"🏅 Уровень: `{u['lvl']}` ({u['exp']}/{(u['lvl']*1000)})\n"
+            f"🎭 Статус: **{u['status']}**\n"
+            f"🍎 Энергия: `{u['energy']}%` | ❤️ ХП: `{u['hp']}%`\n"
+            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+            f"💰 Наличные: `{u['balance']:,}` 💰\n"
+            f"🏦 В банке: `{u['bank']:,}` 💰\n"
+            f"₿ BTC: `{u['btc']:.4f}` | Ξ ETH: `{u['eth']:.2f}`\n"
+            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+            f"🚗 Авто: {len(u['cars'])} | 🏠 Дома: {len(u['houses'])} | 🏢 Бизнес: {len(u['biz'])}"
+        )
+        return await m.answer(txt, parse_mode="Markdown")
+
+    # --- [ БЛОК: ЭКОНОМИКА ] ---
+    if text == ".работа":
+        if datetime.now() - u["last_work"] < timedelta(minutes=3):
+            wait = timedelta(minutes=3) - (datetime.now() - u["last_work"])
+            return await m.answer(f"⏳ Вы устали! Отдохните еще {wait.seconds} сек.")
+        
+        pay = random.randint(5000, 15000)
+        tax_amt = int(pay * (market['tax'] / 100))
+        u["balance"] += (pay - tax_amt)
+        u["last_work"] = datetime.now()
+        u["exp"] += 150
+        if u["exp"] >= u["lvl"] * 1000:
+            u["lvl"] += 1; u["exp"] = 0
+            await m.answer("🆙 **LEVEL UP!** Ваш уровень теперь: " + str(u["lvl"]))
+        return await m.answer(f"⚒ Ты отработал смену!\n💰 Грязными: `{pay:,}`\n💸 Налог ({market['tax']}%): `{tax_amt:,}`\n✅ Получено: **{pay-tax_amt:,} 💰**")
+
+    if text.startswith(".банк"):
+        try:
+            amt = int(text.split()[1])
+            if u["balance"] >= amt > 0:
+                u["balance"] -= amt; u["bank"] += amt
+                return await m.answer(f"🏦 Депозит пополнен на `{amt:,}` 💰")
+            else: return await m.answer("❌ Недостаточно наличных!")
+        except: return await m.answer("❓ Пример: `.банк 1000`")
+
+    if text.startswith(".снять"):
+        try:
+            amt = int(text.split()[1])
+            if u["bank"] >= amt > 0:
+                u["bank"] -= amt; u["balance"] += amt
+                return await m.answer(f"🏦 Снято со счета: `{amt:,}` 💰")
+            else: return await m.answer("❌ В банке нет столько денег!")
+        except: return await m.answer("❓ Пример: `.снять 1000`")
+
+    # --- [ БЛОК: БИРЖА (КРИПТА И АКЦИИ) ] ---
+    if text == ".биржа":
+        # Динамика цен
+        market["btc"] += random.randint(-100000, 100000)
+        market["apple"] += random.randint(-500, 500)
+        txt = (
+            "📈 **МИРОВАЯ БИРЖА**\n\n"
+            f"₿ Bitcoin (BTC): `{market['btc']:,}` 💰\n"
+            f"Ξ Ethereum (ETH): `{market['eth']:,}` 💰\n"
+            f"🍎 Акция Apple: `{market['apple']:,}` 💰\n"
+            f"🚗 Акция Tesla: `{market['tesla']:,}` 💰\n\n"
+            "🔹 Купить: `.купить бтс 1` или `.купить акцию тесла 5`"
+        )
+        return await m.answer(txt, parse_mode="Markdown")
+
+    # --- [ БЛОК: МАГАЗИН И ПОКУПКИ ] ---
+    if text == ".магазин":
+        res = "🛒 **МАГАЗИН ВСЕГО:**\n\n**🚗 МАШИНЫ:**\n"
+        for k, v in CARS.items(): res += f"• {k}: `{v:,}` 💰\n"
+        res += "\n**🏠 ДОМА:**\n"
+        for k, v in HOUSES.items(): res += f"• {k}: `{v:,}` 💰\n"
+        res += "\n**🏢 БИЗНЕС:**\n"
+        for k, v in BIZ.items(): res += f"• {k}: `{v:,}` 💰\n"
+        res += "\n👉 Купить: `.купить [название]`"
+        return await m.answer(res)
+
+    if text.startswith(".купить"):
+        item = text.replace(".купить", "").strip()
+        if item in CARS:
+            if u["balance"] >= CARS[item]:
+                u["balance"] -= CARS[item]; u["cars"].append(item)
+                return await m.answer(f"🚗 Поздравляем с покупкой **{item}**!")
+            else: return await m.answer("❌ Нет денег!")
+        elif item in HOUSES:
+            if u["balance"] >= HOUSES[item]:
+                u["balance"] -= HOUSES[item]; u["houses"].append(item)
+                return await m.answer(f"🏠 Теперь у вас есть свой дом: **{item}**!")
+            else: return await m.answer("❌ Нет денег!")
+        elif item in BIZ:
+            if u["balance"] >= BIZ[item]:
+                u["balance"] -= BIZ[item]; u["biz"].append(item)
+                return await m.answer(f"🏢 Вы открыли бизнес: **{item}**!")
+            else: return await m.answer("❌ Нет денег!")
+        # Покупка крипты
+        elif "бтс" in item:
+            try:
+                count = int(item.split()[-1])
+                cost = market["btc"] * count
+                if u["balance"] >= cost:
+                    u["balance"] -= cost; u["btc"] += count
+                    return await m.answer(f"₿ Куплено BTC: {count} шт.")
+            except: pass
+        return await m.answer("❌ Товар не найден. Проверьте название в `.магазин`")
+
+    # --- [ БЛОК: КАЗИНО ] ---
+    if text.startswith(".казино"):
+        try:
+            bet = int(text.split()[1])
+            if u["balance"] < bet or bet < 100: return await m.answer("❌ Ставка слишком мала или нет денег!")
+            if random.random() < 0.44:
+                u["balance"] += bet
+                return await m.answer(f"🎰 **ПОБЕДА!** Ваш выигрыш: `{bet*2:,}` 💰")
+            else:
+                u["balance"] -= bet
+                return await m.answer(f"🌚 **ПРОИГРЫШ.** Вы потеряли `{bet:,}` 💰")
+        except: return await m.answer("❓ Пример: `.казино 5000`")
+
+    # --- [ БЛОК: РЕЙТИНГ ] ---
+    if text == ".топ":
+        top = sorted(users.items(), key=lambda x: x[1]['balance'] + x[1]['bank'], reverse=True)[:10]
+        res = "🏆 **FORBES GLOBAL TOP:**\n\n"
+        for i, (uid, d) in enumerate(top, 1):
+            total = d['balance'] + d['bank']
+            res += f"{i}. {d['name']} — `{total:,}` 💰\n"
+        return await m.answer(res)
+
+    # --- [ БЛОК: ПОЛИТИКА ] ---
+    if text == ".выборы":
+        txt = "🗳 **ВЫБОРЫ ПРЕЗИДЕНТА**\n\nКандидаты:\n"
+        for cid, voters in votes.items():
+            txt += f"• ID {cid}: {len(voters)} голосов\n"
+        txt += "\n👉 Проголосовать: `.голосовать [ID]`"
+        return await m.answer(txt)
+
+    if text.startswith(".голосовать"):
+        try:
+            target_id = int(text.split()[1])
+            if target_id not in votes: votes[target_id] = []
+            if uid not in [v for sub in votes.values() for v in sub]:
+                votes[target_id].append(uid)
+                return await m.answer("✅ Голос принят!")
+            else: return await m.answer("❌ Вы уже голосовали!")
+        except: pass
+
+    # --- [ БЛОК: АДМИН ПАНЕЛЬ (ТОЛЬКО ОСНОВАТЕЛЬ) ] ---
+    if text in [".ахелп", "/ahelp", ".админ"]:
+        if not await is_owner(m): return
+        txt = (
+            "🛡 **ПАНЕЛЬ ОСНОВАТЕЛЯ**\n\n"
+            "• `.выдать [сумма]` — Дать денег (реплаем)\n"
+            "• `.уб [сумма]` — Установить баланс (реплаем)\n"
+            "• `.статус [текст]` — Выдать статус (реплаем)\n"
+            "• `.бан` — Бан навсегда (реплаем)\n"
+            "• `.разбан [id]` — Снять бан\n"
+            "• `.мут [мин]` — Мут игрока (реплаем)\n"
+            "• `/setlvl [число]` — Сетнуть лвл (себе или реплаем)\n"
+            "• `.налог [0-30]` — Установить налог"
+        )
+        return await m.answer(txt)
+
+    if text.startswith("/setlvl"):
+        if not await is_owner(m): return
+        try:
+            lvl = int(text.split()[1])
+            target = get_u(m.reply_to_message) if m.reply_to_message else u
+            target["lvl"] = lvl
+            return await m.answer(f"🔮 Уровень {target['name']} изменен на {lvl}")
+        except: pass
+
+    if text.startswith(".уб"):
+        if not await is_owner(m): return
+        if not m.reply_to_message: return
+        try:
+            val = int(text.split()[-1])
+            target = get_u(m.reply_to_message)
+            target["balance"] = val
+            return await m.answer(f"✅ Баланс {target['name']} изменен на {val}")
+        except: pass
+
+    if text.startswith(".бан"):
+        if not await is_owner(m): return
+        if not m.reply_to_message: return
+        tid = m.reply_to_message.from_user.id
+        banned_users.add(tid)
+        return await m.answer("🚫 Игрок заблокирован.")
+
+    if text.startswith(".мут"):
+        if not await is_owner(m): return
+        if not m.reply_to_message: return
+        try:
+            mins = int(text.split()[-1])
+            tid = m.reply_to_message.from_user.id
+            muted_users[tid] = datetime.now() + timedelta(minutes=mins)
+            return await m.answer(f"🤐 Игрок замучен на {mins} минут.")
+        except: pass
+
+    if text.startswith(".налог"):
+        if not await is_owner(m): return
+        try:
+            ntax = int(text.split()[-1])
+            if 0 <= ntax <= 30:
+                market["tax"] = ntax
+                return await m.answer(f"📊 Налог изменен на {ntax}%")
+        except: pass
+
+    if text == ".админы":
+        adms = [f"• {d['name']} (@{d['username']})" for i, d in users.items() if d['is_admin']]
+        return await m.answer("🛡 **АДМИНИСТРАЦИЯ:**\n" + "\n".join(adms))
+
+# --- [ ЗАПУСК БОТА ] ---
+async def start_up():
     await set_main_menu(bot)
+    print(">>> GLOBAL SIMULATOR STARTED (MONSTER MODE)")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(start_up())
+    except (KeyboardInterrupt, SystemExit):
+        print(">>> BOT STOPPED")
